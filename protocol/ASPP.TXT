@@ -1,0 +1,453 @@
+                    ASPP Interface
+
+Date: 4/1/2004
+
+Introduction
+=============
+
+	
+	TCP ports for data    --> 950(port 1) - 955(port 16)
+	TCP ports for ioctl   --> 966(port 1) - 981(port 16)
+
+
+To use ASPP, you must set the firmware in "Host Base Mode/Driver/NT Real COM"
+mode and you have to write a Socket program. This program will connect to 
+firmware and control the serial port. Firmware will listen in TCP port 
+<950+port> and <966+port>. So you must create two channel to connect to 
+<IP>:<950+port> and <IP>:<966+port>. 
+
+The <950+port> is for data channel, everything you write to <950+port> will 
+be transferred to serial port directly, and the input data of the serial port 
+will also be transferred to <950+port>. That is, the data channel is RAW data 
+transfer.
+
+The <966+port> is for command channel. You must follow the spec to communicate
+with firmware.
+
+
+ASPP Command List
+===================
+#define D_COMMAND_IOCTL         16 0x10     /* IOCTL command                */
+#define D_COMMAND_FLOWCTRL      17 0x11     /* Flow control command         */
+#define D_COMMAND_LINECTRL      18 0x12     /* Line status control command  */
+#define D_COMMAND_LSTATUS       19 0x13     /* Line status read command     */
+#define D_COMMAND_FLUSH         20 0x14     /* Buffer flush command         */
+#define D_COMMAND_IQUEUE        21 0x15     /* Input queue command          */
+#define D_COMMAND_OQUEUE        22 0x16     /* Output queue command         */
+#define D_COMMAND_SETBAUD       23 0x17     /* Set baud rate                */
+#define D_COMMAND_XONXOFF       24 0x18     /* set xon,xoff chars           */
+#define D_COMMAND_PORT_RESET    32 0x20     /* Port reset command(not used) */
+#define D_COMMAND_START_BREAK   33 0x21     /* start break command          */
+#define D_COMMAND_STOP_BREAK    34 0x22     /* stop break command           */
+#define D_COMMAND_START_NOTIFY  36 0x24     /* start notify                 */
+#define D_COMMAND_STOP_NOTIFY   37 0x25     /* stop notify                  */
+#define D_COMMAND_HOST          43 0x35     /* set host name (not used)     */
+#define D_COMMAND_PORT_INIT     44 0x36     /* initialize RS-232 port       */
+#define D_COMMAND_RESENT_TIME   46 0x38     /* TCP resent time (not uesed)  */
+#define D_COMMAND_WAIT_OQUEUE   47 0x39     /* wait oqueue command          */
+#define D_COMMAND_TX_FIFO       48 0x40     /* set tx fifo                  */
+
+
+Notification 
+====================
+Except the above the ASPP command, ASPP also support the Notification.
+The socket program can just wait the notify to know the serial port status,
+which includes CTS/DSR..signal changed status, data error status and break
+signal received. If you don't want use Notification to get above status, use
+relative ASPP command to get status. 
+
+To use Notification, Socket program must send D_COMMAND_START_NOTIFY or
+D_COMMANE_PORT_INIT command first. Firmware will poll host to check host 
+is alive or not every 40 seconds. The NPPI_POLLING is the command that firmware
+send to host via command port. Host must response it via sending 
+NPPI_ALIVE command in 3 seconds. If not, firmware will disconnect after
+5 minutes and return to listen status.
+
+In general, we use D_COMMANE_PORT_INIT to initital port and enable notify.
+
+
+//
+//              offset  0   1   2    3
+//                      +---+---+----+ (Firmware) NPPI_POLLING
+//                      |cmd|LP |IDP |  ---------->
+//                      +---+---+----+                  0   1   2   3
+//                                  NPPI_ALIVE (Host)   +---+---+---+
+//                                          <---------- |rsp|LA |IDA|
+//                                                      +---+---+---+
+//      cmd     : NPPI_POLLING
+//      LP      : 1
+//      IDP     : polling id
+//      rsp     : NPPI_ALIVE
+//      LA      : 1
+//      IDA     : must equal to IDP
+//
+#define NPPI_POLLING                39 0x27    // Firmware polling
+#define NPPI_ALIVE                  40 0x28    // Host alive
+//
+//      NPPI notify event code
+//
+
+#define NPPI_NOTIFY                 38 0x26    // Notify event
+//
+//      NPPI event notify types
+//
+// format of NPPI notify packet
+//
+//      Code    Mode    MSR     OTR
+//      1 byte  1 byte  1 byte  1 byte
+//
+//      Code --> NPPI_NOTIFY
+//      Mode --> NPPI_NOTIFY_PARITY .. NPPI_NOTIFY_LSR_NODATA
+//      MSR  --> UART MSR register content
+//      OTR  --> Other event
+//
+
+//Mode field
+#define NPPI_NOTIFY_PARITY          0x01    // Parity error
+#define NPPI_NOTIFY_FRAMING         0x02    // Framing error
+#define NPPI_NOTIFY_HW_OVERRUN      0x04    // H/W overrun error
+#define NPPI_NOTIFY_SW_OVERRUN      0x08    // S/W overrun error
+#define NPPI_NOTIFY_BREAK           0x10    // Break signal
+#define NPPI_NOTIFY_MSR_CHG         0x20    // Modem status change
+//#define NPPI_NOTIFY_LSR_DATA        0x40    // Line status change with data
+//#define NPPI_NOTIFY_LSR_NODATA      0x80    // Line status change with no data
+
+//OTR field
+#define NPPI_NOTIFY_CTSHOLD         0x01    // Tx hold by CTS low
+#define NPPI_NOTIFY_DSRHOLD         0x02    // Tx hold by DSR low
+#define NPPI_NOTIFY_XOFFHOLD        0x08    // Tx hold by Xoff received
+#define NPPI_NOTIFY_XOFFXENT        0x10    // Xoff Sent
+
+
+NPPI Parameters Define
+=======================
+/*
+ * parameters for D_COMMAND_IOCTL ioctl command
+ */
+#define D_IOCTL_B300            0       /* IOCTL : baud rate = 300 bps   */
+#define D_IOCTL_B600            1       /* IOCTL : baud rate = 600 bps   */
+#define D_IOCTL_B1200           2       /* IOCTL : baud rate = 1200 bps  */
+#define D_IOCTL_B2400           3       /* IOCTL : baud rate = 2400 bps  */
+#define D_IOCTL_B4800           4       /* IOCTL : baud rate = 4800 bps  */
+#define D_IOCTL_B7200           5       /* IOCTL : baud rate = 7200 bps  */
+#define D_IOCTL_B9600           6       /* IOCTL : baud rate = 9600 bps  */
+#define D_IOCTL_B19200          7       /* IOCTL : baud rate = 19200 bps */
+#define D_IOCTL_B38400          8       /* IOCTL : baud rate = 38400 bps */
+#define D_IOCTL_B57600          9       /* IOCTL : baud rate = 57600 bps */
+#define D_IOCTL_B115200         10      /* IOCTL : baud rate = 115200 bps */
+#define D_IOCTL_B230400         11      /* IOCTL : baud rate = 230400 bps */
+#define D_IOCTL_B150            14      /* IOCTL : baud rate = 150 */
+#define D_IOCTL_B134            15      /* IOCTL : baud rate = 134.5 */
+#define D_IOCTL_B110            16      /* IOCTL : baud rate = 110 */
+#define D_IOCTL_B75             17      /* IOCTL : baud rate = 75  */
+#define D_IOCTL_B50             18      /* IOCTL : baud rate = 50  */
+
+#define D_IOCTL_BIT8            3       /* IOCTL : 8 data bits */
+#define D_IOCTL_BIT7            2       /* IOCTL : 7 data bits */
+#define D_IOCTL_BIT6            1       /* IOCTL : 6 data bits */
+#define D_IOCTL_BIT5            0       /* IOCTL : 5 data bits */
+
+#define D_IOCTL_STOP1           0       /* IOCTL : 1 stop bit  */
+#define D_IOCTL_STOP2           4       /* IOCTL : 2/1.5 stop bits */
+
+#define D_IOCTL_NONE            0       /* IOCTL : none parity */
+#define D_IOCTL_EVEN            8       /* IOCTL : even parity */
+#define D_IOCTL_ODD             16      /* IOCTL : odd parity  */
+#define D_IOCTL_MARK            24      /* IOCTL : mark parity  */
+#define D_IOCTL_SPACE           32      /* IOCTL : space parity  */
+/*
+ * parameters for D_COMMAND_FLOWCTRL flow control command
+ */
+#define D_FCTRL_CTS_YES         1       /* yes, do CTS H/W flow control      */
+#define D_FCTRL_CTS_NO          0       /* no, don't do CTS H/W flow control */
+#define D_FCTRL_RTS_YES         1       /* yes, do RTS H/W flow control      */
+#define D_FCTRL_RTS_NO          0       /* no, don't do RTS H/W flow control */
+#define D_FCTRL_TXXON_YES       1       /* yes, Tx XON/XOFF S/W flow control */
+#define D_FCTRL_TXXON_NO        0       /* no Tx XON/XOFF S/W flow control   */
+#define D_FCTRL_RXXON_YES       1       /* yes, Rx XON/XOFF S/W flow control */
+#define D_FCTRL_RXXON_NO        0       /* no Rx XON/XOFF S/W flow control   */
+/*
+ * parameters for D_COMMAND_LINECTRL line control command
+ */
+#define D_LCTRL_DTR_ON          1       /* set DTR on           */
+#define D_LCTRL_DTR_OFF         0       /* set DTR off          */
+#define D_LCTRL_RTS_ON          1       /* set RTS on           */
+#define D_LCTRL_RTS_OFF         0       /* set RTS off          */
+/*
+ * parameters for D_COMMAND_FLUSH flush buffer command
+ */
+#define D_FLUSH_RXBUFFER        0       /* flush Rx buffer      */
+#define D_FLUSH_TXBUFFER        1       /* flush Tx buffer      */
+#define D_FLUSH_ALLBUFFER       2       /* flush Rx & Tx buffer */
+/*
+ * parameters for D_COMMAND_LSTATUS line status return
+ */
+#define D_LSTATUS_DSR_ON        1       /* line status : DSR on         */
+#define D_LSTATUS_DSR_OFF       0       /* line status : DSR off        */
+#define D_LSTATUS_CTS_ON        1       /* line status : CTS on         */
+#define D_LSTATUS_CTS_OFF       0       /* line status : CTS off        */
+#define D_LSTATUS_DCD_ON        1       /* line status : DCD on         */
+#define D_LSTATUS_DCD_OFF       0       /* line status : DCD off        */
+
+
+
+Command And Response Format
+==============================
+
+//
+//                              driver                  Firmware
+D_COMMAND_IOCTL :
+                offset  0   1   2    3
+                        +---+---+----+----+   set ioctl
+                        |cmd|len|baud|mode| ---------->
+                        +---+---+----+----+             0   1   2
+                                              set ok    +---+---+----+
+                                            <---------- |rsp| O | K  |
+                                                        +---+---+----+
+                cmd     : D_COMMAND_IOCTL
+                rsp     : D_COMMAND_IOCTL
+                len     : 2
+                baud    : D_IOCTL_B300  - D_IOCTL_B50
+                mode    : D_IOCTL_BIT5  - D_IOCTL_BIT8  |
+                          D_IOCTL_SOPT1 - D_IOCTL_STOP2 |
+                          D_IOCTL_NONT  - D_IOCTL_SPACE
+
+D_COMMAND_FLOWCTRL :
+                offset  0   1   2    3
+                        +---+---+----+----+---+---+   set flow
+                        |cmd|len|CTS |RTS |STX|SRX| ---------->
+                        +---+---+----+----+---+---+     0   1   2
+                                              set ok    +---+---+----+
+                                            <---------- |rsp| O | K  |
+                                                        +---+---+----+
+                cmd     : D_COMMAND_FLOWCTRL
+                rsp     : D_COMMAND_FLOWCTRL
+                len     : 4
+                CTS     : D_FCTRL_CTS_YES,D_FCTRL_CTS_NO
+                RTS     : D_FCTRL_RTS_YES,D_FCTRL_RTS_NO
+                STX     : D_FCTRL_TXXON_YES,D_FCTRL_TXXON_NO
+                SRX     : D_FCTRL_RXXON_YES,D_FCTRL_RXXON_NO
+
+D_COMMAND_LINECTRL
+                offset  0   1   2    3
+                        +---+---+----+----+   set modem control
+                        |cmd|len|DTR |RTS | ---------->
+                        +---+---+----+----+             0   1   2
+                                              set ok    +---+---+----+
+                                            <---------- |rsp| O | K  |
+                                                        +---+---+----+
+                cmd     : D_COMMAND_LINECTRL
+                rsp     : D_COMMAND_LINECTRL
+                len     : 2
+                DTR     : D_LCTRL_DTR_ON,D_LCTRL_DTR_OFF
+                RTS     : D_LCTRL_RTS_ON,D_LCTRL_RTS_OFF
+
+D_COMMAND_LSTATUS
+                offset  0   1
+                        +---+---+             get line status
+                        |cmd|LC |           ---------->
+                        +---+---+                       0   1   2   3   4
+                                              get ok    +---+---+---+---+---+
+                                            <---------- |rsp|LR |DSR|CTS|DCD|
+                                                        +---+---+---+---+---+
+                cmd     : D_COMMAND_LSTATUS
+                LC      : 0
+                rsp     : D_COMMAND_LSTATUS
+                LR      : 3
+                DSR     : D_LSTATUS_DSR_ON,DLSTATUS_DSR_OFF
+                CTS     : D_LSTATUS_CTS_ON,DLSTATUS_CTS_OFF
+                DCD     : D_LSTATUS_DCD_ON,DLSTATUS_DCD_OFF
+
+D_COMMAND_FLUSH
+                offset  0   1   2
+                        +---+---+----+        flush control
+                        |cmd|len|mode|      ---------->
+                        +---+---+----+                  0   1   2
+                                              flush ok  +---+---+----+
+                                            <---------- |rsp| O | K  |
+                                                        +---+---+----+
+                cmd     : D_COMMAND_FLUSH
+                rsp     : D_COMMAND_FLUSH
+                len     : 1
+                mode    : D_FLUSH_RXBUFFER - D_FLUSH_ALLBUFFER
+
+D_COMMAND_IQUEUE
+                It's not used on Firmware currently.
+D_COMMAND_OQUEUE
+                offset  0   1
+                        +---+---+             get line status
+                        |cmd|LC |           ---------->
+                        +---+---+                       0   1   2   3
+                                              get ok    +---+---+---+---+
+                                            <---------- |rsp|LR | size  |
+                                                        +---+---+---+---+
+                cmd     : D_COMMAND_OQUEUE
+                LC      : 0
+                rsp     : D_COMMAND_OQUEUE
+                LR      : 3
+                size    : data bytes queued on TX buffer
+
+
+D_COMMAND_SETBAUD
+                offset  0   1   2    3  4   5
+                        +---+---+---+---+---+---+  set baud
+                        |cmd|len|   baud        | ---------->
+                        +---+---+---+---+---+---+       0   1   2
+                                              set   ok  +---+---+----+
+                                            <---------- |rsp| O | K  |
+                                                        +---+---+----+
+                cmd     : D_COMMAND_SETBAUD
+                rsp     : D_COMMAND_SETBAUD
+                len     : 4
+                baud    : baud rate to be set
+
+D_COMMAND_XONXOFF
+                offset  0   1   2    3  4
+                        +---+---+---+----+    set XON/XOFF char
+                        |cmd|len|XON|XOFF|  ---------->
+                        +---+---+---+----+               0   1   2
+                                              set   ok  +---+---+----+
+                                            <---------- |rsp| O | K  |
+                                                        +---+---+----+
+                cmd     : D_COMMAND_SETXONXOFF
+                rsp     : D_COMMAND_SETXONXOFF
+                len     : 2
+                XON     : XON char
+                XOFF    : XOFF char
+
+D_COMMAND_PORT_RESET
+                It's not used on Firmware currently.
+
+D_COMMAND_START_BREAK
+                offset  0   1   2
+                        +---+---+             set break on
+                        |cmd|len|           ---------->
+                        +---+---+                        0   1   2
+                                              set   ok  +---+---+----+
+                                            <---------- |rsp| O | K  |
+                                                        +---+---+----+
+                cmd     : D_COMMAND_START_BREAK
+                rsp     : D_COMMAND_START_BREAK
+                len     : 0
+
+D_COMMAND_STOP_BREAK
+                offset  0   1   2
+                        +---+---+             set break off
+                        |cmd|len|           ---------->
+                        +---+---+                        0   1   2
+                                              set   ok  +---+---+----+
+                                            <---------- |rsp| O | K  |
+                                                        +---+---+----+
+                cmd     : D_COMMAND_STOP_BREAK
+                rsp     : D_COMMAND_STOP_BREAK
+                len     : 0
+
+D_COMMAND_START_NOTIFY
+                offset  0   1   2
+                        +---+---+             set notify on
+                        |cmd|len|           ---------->
+                        +---+---+                        0   1   2
+                                              set   ok  +---+---+----+
+                                            <---------- |rsp| O | K  |
+                                                        +---+---+----+
+                cmd     : D_COMMAND_START_NOTIFY
+                rsp     : D_COMMAND_START_NOTIFY
+                len     : 0
+
+D_COMMAND_STOP_NOTIFY
+                offset  0   1   2
+                        +---+---+             set notify off
+                        |cmd|len|           ---------->
+                        +---+---+                        0   1   2
+                                              set   ok  +---+---+----+
+                                            <---------- |rsp| O | K  |
+                                                        +---+---+----+
+                cmd     : D_COMMAND_STOP_NOTIFY
+                rsp     : D_COMMAND_STOP_NOTIFY
+                len     : 0
+
+D_COMMAND_HOST
+                offset  0   1   2
+                        +---+---+---------+   set host name
+                        |cmd|len| Hname   | ---------->
+                        +---+---+---------+              0   1   2
+                                              set   ok  +---+---+----+
+                                            <---------- |rsp| O | K  |
+                                                        +---+---+----+
+                cmd     : D_COMMAND_HOST
+                rsp     : D_COMMAND_HOST
+                len     : length of host name in bytes
+                Hname   : host name
+
+D_COMMAND_PORT_INIT (WARNING !!!!!! This command will also enable the notification.)
+                offset  0   1   2    3    4   5   6   7   8   9   10
+                        +---+---+----+----+---+---+---+---+---+---+-----+
+                        |cmd|LC |baud|mode|DTR|RTS|cts|rts|STX|SRX|Hname|
+                        +---+---+----+----+---+---+---+---+---+---+-----+
+                                                        0   1   2
+                                              set   ok  +---+---+---+---+---+
+                                            <---------- |rsp| LR|DSR|CTS|DCD|
+                                                        +---+---+---+---+---+
+                cmd     : D_COMMAND_PORT_INIT
+                LC      : 10 + length of host name in bytes
+                baud    : D_IOCTL_B300  - D_IOCTL_B50
+                mode    : D_IOCTL_BIT5  - D_IOCTL_BIT8  |
+                          D_IOCTL_SOPT1 - D_IOCTL_STOP2 |
+                          D_IOCTL_NONT  - D_IOCTL_SPACE
+                DTR     : D_LCTRL_DTR_ON,D_LCTRL_DTR_OFF
+                RTS     : D_LCTRL_RTS_ON,D_LCTRL_RTS_OFF
+                cts     : D_FCTRL_CTS_YES,D_FCTRL_CTS_NO
+                rts     : D_FCTRL_RTS_YES,D_FCTRL_RTS_NO
+                STX     : D_FCTRL_TXXON_YES,D_FCTRL_TXXON_NO
+                SRX     : D_FCTRL_RXXON_YES,D_FCTRL_RXXON_NO
+                Hname   : host name, optional
+
+                rsp     : D_COMMAND_PORT_INIT
+                LR      : 3
+                DSR     : D_LSTATUS_DSR_ON,DLSTATUS_DSR_OFF
+                CTS     : D_LSTATUS_CTS_ON,DLSTATUS_CTS_OFF
+                DCD     : D_LSTATUS_DCD_ON,DLSTATUS_DCD_OFF
+
+D_COMMAND_RESENT_TIME
+                offset  0   1   2    3  4
+                        +---+---+---+---+     set reset time
+                        |cmd|len|time   |   ---------->
+                        +---+---+---+---+               0   1   2
+                                              set   ok  +---+---+----+
+                                            <---------- |rsp| O | K  |
+                                                        +---+---+----+
+                cmd     : D_COMMAND_RESENT_TIME
+                rsp     : D_COMMAND_RESENT_TIME
+                len     : 2
+                time    : resent time in msec
+
+D_COMMAND_WAIT_OQUEUE
+                offset  0   1   2    3  4   5
+                        +---+---+---+---+---+---+  set baud
+                        |cmd|LC |   time        | ---------->
+                        +---+---+---+---+---+---+       0   1   2    3
+                                              set   ok  +---+---+----+---+
+                                            <---------- |rsp|LR | oqueue |
+                                                        +---+---+----+---+
+                cmd     : D_COMMAND_WAIT_OQUEUE
+                rsp     : D_COMMAND_WAIT_OQUEUE
+                LC      : 4
+                time    : time out for wait OQUEUE = 0 (ms)
+                LR      : 2
+                oqueue  : bytes queued on TX buffer
+
+
+D_COMMAND_TX_FIFO
+                offset  0   1   2    3
+                        +---+---+----+        set TX fifo mode
+                        |cmd|len|size|      ---------->
+                        +---+---+----+                  0   1   2
+                                              set   ok  +---+---+----+
+                                            <---------- |rsp| O | K  |
+                                                        +---+---+----+
+                cmd     : D_COMMAND_TX_FIFO
+                rsp     : D_COMMAND_TX_FIFO
+                len     : 1
+                size    : tx fifo size (In general, 16=enable, 0=disable)
+
+
