@@ -4,7 +4,7 @@
 /*	Program:							*/
 /*	   example.c 							*/
 /*	Purpose:							*/
-/*	   This program will continueosly send '1234567890'             */
+/*	   This program will continuously send '1234567890'             */
 /*	   string out from CN2000  RS-232 port, whose port Mode 	*/
 /*	   should be set as 'ASPP', and read back any                   */
 /*	   incoming data until program interrupted.			*/
@@ -43,18 +43,17 @@
 #include	<netinet/in.h>
 #include	<netdb.h>
 #include	<arpa/telnet.h>
+#include    <arpa/inet.h>
 
 #include	"aspp.h"
 
-main(argc, argv)
-int	argc;
-char *	argv[];
+int main(int argc, char * argv[])
 {
-	int			fd, port, i, baud;
-	unsigned long		ipaddr;
-	struct hostent *	name;
-	struct sockaddr_in	des;
-	unsigned char		buf[100];
+    int			fd, port, i, baud;
+    unsigned long		ipaddr;
+    struct hostent *	name;
+    struct sockaddr_in	des;
+    unsigned char		buf[100];
 
 	port = 1;	/* target port = 1st port on cn2000  */
 	if ( argc == 1 ) {
@@ -72,9 +71,11 @@ char *	argv[];
 		exit(0);
 	}
 	strncpy((char *)&des.sin_addr, name->h_addr, name->h_length);
+/*
 	printf("CN2000 IP addr = 0x%X(%s) \n", des.sin_addr.s_addr,
-		inet_ntoa(des.sin_addr.s_addr) );
-
+    	inet_ntoa(des.sin_addr.s_addr));
+*/
+	
 	if ( argc > 2 )
 		port = atoi(argv[2]);
 
@@ -153,14 +154,14 @@ char *	argv[];
 		printf("LINE OFF ");
 	printf("\n");
 
-	if ( sio_write(fd, "1234567890", 10) != 10 ) {
+	if ( sio_write(fd, (char *) "1234567890", 10) != 10 ) {
 		printf("write data [1234567890] fail!\n");
 		sio_close(fd);
 		exit(0);
 	}
 	printf("Waiting data [1234567890] from port %d .....\n", port);
 
-	i = sio_read(fd, buf, 100);
+	i = sio_read(fd, (char *) buf, 100);
 	if ( i > 0 ) {
 		buf[i] = 0;
 		printf("Read: [%s]\n", buf);
