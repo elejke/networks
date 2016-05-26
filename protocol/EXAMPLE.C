@@ -43,7 +43,7 @@
 #include	<netinet/in.h>
 #include	<netdb.h>
 #include	<arpa/telnet.h>
-#include    <arpa/inet.h>
+#include        <arpa/inet.h>
 
 #include	"aspp.h"
 
