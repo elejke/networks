@@ -1,0 +1,14 @@
+1. Connect to 10.55.70.28 using telnet. Login and password are unknown. 
+Instead of telnet one can use "NPort Administrator" tool from Windows. 
+It has even wider functionality but still requires a login/passwords unknown pair.
+
+2. Configure NPort 5150A to work in a Real COM Mode. 
+For further details see corresponding file in docs folder. 
+
+3. Install new linux driver from the "drivers" folder.
+
+4. For port forwarding and tty configuration see README file inside driver directory 
+
+5. Investigate "protocol" folder which contains protocol documentation in README.TXT file and code example in EXAMPLE.C
+
+6. Write the required tool - it should be easy!
